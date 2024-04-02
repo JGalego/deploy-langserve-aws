@@ -1,0 +1,33 @@
+# You can use any of these parameters to create conditions or mappings in your template.
+Parameters:
+  App:
+    Type: String
+    Description: Your application name
+  Env:
+    Type: String
+    Description: The environment name your service, job, or workflow is being deployed to
+  Name:
+    Type: String
+    Description: Your workload name
+
+Resources:
+  BedrockAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: BedrockActions
+            Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource:
+              - arn:aws:bedrock:*::foundation-model/anthropic.*
+
+Outputs:
+  # You need to output the IAM ManagedPolicy so that Copilot can add it
+  # as a managed policy to your ECS task role.
+  BedrockAccessPolicyArn:
+    Description: "The ARN of the ManagedPolicy to attach to the task role."
+    Value: !Ref BedrockAccessPolicy
