@@ -33,12 +33,18 @@ network:
 
 # Optional fields for more advanced use-cases.
 #
-#variables:                    # Pass environment variables as key value pairs.
-#  LOG_LEVEL: info
+variables:
+  # LangSmith
+  LANGCHAIN_TRACING_V2: true
+  LANGCHAIN_PROJECT: ${COPILOT_APPLICATION_NAME}-${COPILOT_ENVIRONMENT_NAME}
+  LANGCHAIN_ENDPOINT: "https://api.smith.langchain.com"
 
 secrets:
+  # Bedrock Chat
   BEDROCK_CHAT_USERNAME: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/BEDROCK_CHAT_USERNAME
   BEDROCK_CHAT_PASSWORD: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/BEDROCK_CHAT_PASSWORD
+  # LangSmith
+  LANGCHAIN_API_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/LANGCHAIN_API_KEY
 
 # You can override any of the values defined above by environment.
 #environments:
