@@ -1,0 +1,251 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License").
+# You may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+    CloudFormation template to provision a dev environment with
+    Conda, code-server, Docker and AWS Copilot pre-installed
+
+Parameters:
+  VpcCidrBlock:
+    Description: >
+      Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.192.0.0/16
+    AllowedPattern: ((\d|[1-9]\d|1\d{2}|2[0-4]\d|25[0-5])\.){3}(\d|[1-9]\d|1\d{2}|2[0-4]\d|25[0-5])(\/(\d|[1-2]\d|3[0-2]))
+  PublicSubnetCidrBlock:
+    Description: >
+      Please enter the IP range (CIDR notation) for the public subnet
+    Type: String
+    Default: 10.192.10.0/24
+    AllowedPattern: ((\d|[1-9]\d|1\d{2}|2[0-4]\d|25[0-5])\.){3}(\d|[1-9]\d|1\d{2}|2[0-4]\d|25[0-5])(\/(\d|[1-2]\d|3[0-2]))
+  AmiId:
+    Description: >
+      Please enter a valid Amazon Machine Image (AMI) ID
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64'
+  InstanceType:
+    Description: Please enter a valid EC2 instance type
+    Type: String
+    Default: t2.medium
+  CodeServerVersion:
+    Description: >
+      The code-server release to be installed
+      https://github.com/coder/code-server/releases
+    Type: String
+    Default: 4.20.0
+    AllowedPattern: (\d{1,3}\.){1,2}\d{1,3}
+  CodeServerPassword:
+    Description: >
+      A secret password to access code-server
+    Type: String
+    NoEcho: true
+
+Resources:
+  # Adapted from https://docs.aws.amazon.com/codebuild/latest/userguide/cloudformation-vpc-template.html
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidrBlock
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnetCidrBlock
+      MapPublicIpOnLaunch: true
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+  # Bootstraps an environment with Conda, Docker, code-server and AWS Copilot pre-installed
+  EC2AccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      # For more information on how to restrict this policy, see
+      # https://github.com/aws/copilot-cli/issues/2615
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      Path: "/"
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - !Ref EC2AccessRole
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH, LangServe and Code server inbound traffic
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref AmiId
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: "0"
+          GroupSet:
+            - Ref: InstanceSecurityGroup
+          SubnetId:
+            !Ref PublicSubnet
+      IamInstanceProfile:
+        !Ref EC2InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+
+          su - ec2-user -c 'sh -x' <<EOF
+          # 1. Preliminaries
+
+          # 1a. Install Git and tree
+          # https://git-scm.com/book/en/v2/Getting-Started-Installing-Git
+          # https://itslinuxfoss.com/install-tree-linux
+          sudo yum install -y git tree
+
+          # 1b. Configure AWS CLI
+          aws configure set region ${AWS::Region}
+          aws configure set output json
+
+          # 2. Install Conda
+          # https://conda.io/projects/conda/en/latest/user-guide/install/index.html
+
+          # 2a. Download and install Miniconda
+          # https://docs.conda.io/projects/miniconda/en/latest/
+          mkdir -p ~/miniconda3
+          wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+          bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+          rm -rf ~/miniconda3/miniconda.sh
+
+          # 2b. Initialize Conda
+          ~/miniconda3/bin/conda init bash
+          source ~/.bashrc
+
+          # 3. Install Docker
+          # https://docs.docker.com/engine/install/
+          # https://docs.docker.com/engine/install/linux-postinstall/
+
+          # 3a. Install Docker
+          sudo yum install -y docker
+
+          # 3b. Start Docker daemon
+          sudo systemctl start docker
+
+          # 3c. Configure docker to start on boot
+          sudo systemctl enable docker.service
+          sudo systemctl enable containerd.service
+
+          # 3d. Add your user to the docker group
+          sudo usermod -aG docker \$USER
+
+          # 3e. Log out and log back in so that your group membership is re-evaluated
+
+          # 3f. Check if Docker is up and running
+          sudo docker info
+
+          # 4. Install AWS copilot
+          # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Copilot.html#copilot-install
+
+          # 4a. Download AWS Copilot
+          sudo curl -Lo /usr/local/bin/copilot https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux
+          sudo chmod +x /usr/local/bin/copilot
+
+          # 4b. Check AWS Copilot installation
+          copilot --help
+
+          # 5. Install Code Server
+          # https://github.com/coder/code-server
+          # https://coder.com/docs/code-server/latest/install
+
+          # 5a. Add Code Server configuration
+          # https://coder.com/docs/code-server/latest/guide#using-a-self-signed-certificate
+          mkdir -p \$HOME/.config/code-server
+          cat <<EOT >> \$HOME/.config/code-server/config.yaml
+          bind-addr: 0.0.0.0:8080
+          auth: password
+          password: ${CodeServerPassword}
+          cert: false
+          EOT
+
+          # 5b. Allows code-server to listen on port 443 (if necessary)
+          sudo setcap cap_net_bind_service=+ep /usr/lib/code-server/lib/node
+
+          # 5c. Download and install Code Server
+          curl -fOL https://github.com/coder/code-server/releases/download/v${CodeServerVersion}/code-server-${CodeServerVersion}-amd64.rpm
+          sudo rpm -i code-server-${CodeServerVersion}-amd64.rpm
+
+          # 5d. Configure Code Server to start on boot
+          sudo systemctl enable --now code-server@\$USER
+          EOF
+
+Outputs:
+  InstanceId:
+    Description: The EC2 instance ID to reference the instance
+    Value: !Ref EC2Instance
+  InstanceConnectUrl:
+    Description: The URL to access the instance via EC2 Instance Connect
+    Value: !Join ["", ["https://", !Ref "AWS::Region", ".console.aws.amazon.com/ec2-instance-connect/ssh?region=", !Ref "AWS::Region", "&connType=standard&instanceId=", !Ref EC2Instance, "&osUser=ec2-user&sshPort=22#/"]]
+  CodeServerUrl:
+    Description: The URL to access Code Server on your browser
+    Value: !Join ["", ["http://", !GetAtt EC2Instance.PublicDnsName, ":8080"]]
+  LangServeUrl:
+    Description: The URL to access LangServe on your browser
+    Value: !Join ["", ["http://", !GetAtt EC2Instance.PublicDnsName, ":8000"]]
