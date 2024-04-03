@@ -8,11 +8,7 @@ CloudFormation Template to provision a demo environment with Conda, code-server,
 
 ### Deploy the CloudFormation stack
 
-1. Click on the **Launch Stack** button to start a new deployment.
-
-	[![Launch Stack](https://cdn.rawgit.com/buildkite/cloudformation-launch-stack-button-svg/master/launch-stack.svg)](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/create/review?templateURL=https://raw.githubusercontent.com/JGalego/deploy-langserve-aws/main/infra/cloudformation/deploy.yml&stackName=langserve-aws)
-
-	> If the **Launch Stack** button is not working, open the CloudFormation console, click on **Create stack > With new resources (standard)**, select **Specify template > Upload a template file** in the **Create stack** section and upload the template file (`deploy.yml`) manually.
+1. Open the CloudFormation console, click on **Create stack > With new resources (standard)**, select **Specify template > Upload a template file** in the **Create stack** section and upload the template file (`infra/cloudformation/deploy.yml`).
 
 2. Fill in the **Parameters** and click **Next**.
 
