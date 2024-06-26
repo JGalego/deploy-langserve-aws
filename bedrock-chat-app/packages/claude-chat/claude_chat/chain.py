@@ -9,31 +9,35 @@ _model_kwargs = {
     "max_tokens": int(os.getenv("BEDROCK_CLAUDE_MAX_TOKENS_TO_SAMPLE", "300")),
 }
 
-from langchain_community.chat_models import BedrockChat
-from langchain.schema.runnable import ConfigurableField
+from langchain_aws import ChatBedrock
+from langchain_core.runnables import ConfigurableField
 
 # Full list of base model IDs is available at
 # https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids-arns.html
 _model_alts = {
-    "claude_3_haiku": BedrockChat(
+    # As of June 2024, Claude 3.5 Sonnet is only available in N. Virginia (us-east-1)
+    "claude_3.5_sonnet": ChatBedrock(
+        model_id="anthropic.claude-3-5-sonnet-20240620-v1:0", model_kwargs=_model_kwargs
+    ),
+    # As of April 2024, Claude 3 Opus is only available in Oregon (us-west-2)
+    "claude_3_opus": ChatBedrock(
+        model_id="anthropic.claude-3-opus-20240307-v1:0", model_kwargs=_model_kwargs
+    ),
+    "claude_3_haiku": ChatBedrock(
         model_id="anthropic.claude-3-haiku-20240307-v1:0", model_kwargs=_model_kwargs
     ),
-    "claude_2_1": BedrockChat(
+    "claude_2_1": ChatBedrock(
         model_id="anthropic.claude-v2:1", model_kwargs=_model_kwargs
     ),
-    "claude_2": BedrockChat(
+    "claude_2": ChatBedrock(
         model_id="anthropic.claude-v2", model_kwargs=_model_kwargs
     ),
-    "claude_1": BedrockChat(
-        model_id="anthropic.claude-v1", model_kwargs=_model_kwargs
-    ),
-    "claude_instant_1": BedrockChat(
+    "claude_instant_1": ChatBedrock(
         model_id="anthropic.claude-instant-v1", model_kwargs=_model_kwargs
     ),
 }
 
-
-_model = BedrockChat(
+_model = ChatBedrock(
     model_id="anthropic.claude-3-sonnet-20240229-v1:0", model_kwargs=_model_kwargs
 ).configurable_alternatives(
     which=ConfigurableField(
@@ -43,7 +47,7 @@ _model = BedrockChat(
     **_model_alts,
 )
 
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 
 # For some tips on how to construct effective prompts for Claude,
 # check out Anthropic's Claude Prompt Engineering deck (Bedrock edition)
