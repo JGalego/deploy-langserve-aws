@@ -8,5 +8,4 @@ channels:
   - conda-forge
 dependencies:
   - python=3.11
-  - poetry
-  - langchain
+  - "poetry>=1.7.1"
